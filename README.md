@@ -30,5 +30,10 @@ Our primary goal is to develop a reliable and effective access control solution 
 the evolving security challenges of modern society. By leveraging assembly language 
 programming on a microcontroller platform, we aim to create a versatile system capable of 
 safeguarding assets, protecting privacy, and enhancing overall security.
+
+
 ![Screenshot 2024-07-11 065810](https://github.com/VamsiKrishna-26/password-based-security-system-using-8051/assets/163020209/07ce83be-52e2-41d5-b9af-5a8fb28516ff)
+
+This is my project report
+[batch2.pdf](https://github.com/user-attachments/files/16170441/batch2.pdf)
 
