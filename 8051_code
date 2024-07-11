@@ -1,0 +1,383 @@
+ORG 0000H 
+RS EQU P3.7                                          // Row Select for keypad 
+RW EQU P3.6                                        // Row Write for keypad 
+E   EQU P3.5                                          // Enable for LCD 
+SEL EQU 50H                                       //Data Instruction Select for LCD 
+ 
+//DEFAULT PASSWORD 
+MOV 60H,#1D 
+MOV 61H,#2D 
+MOV 62H,#3D 
+MOV 63H,#4D 
+MOV 64H,#5D 
+ 
+//SECURITY KEY 
+MOV 40H,#1D 
+MOV 41H,#1D 
+MOV 42H,#2D 
+MOV 43H,#2D 
+MOV 44H,#3D 
+MOV 45H,#3D   
+ 
+ACALL LCD_INIT 
+ACALL LINE1 
+MOV DPTR,#TEXT1 
+ACALL LCD_OUT 
+ACALL LINE2 
+MOV DPTR,#TEXT2 
+ACALL LCD_OUT 
+MOV R2, #3D                                   // NO OF ATTEMPTS 
+ 
+MAIN:   
+  ACALL DELAY                                                 // Introduce a delay 
+  MOV R0, #5D         // Number of digits in password (5) 
+  MOV R1, #70H        //Data memory location for entered password 
+  ACALL READ_KEYPRESS   //Read entered password from keypad (explained later) 
+  ACALL CLRSCR       //Clear LCD screen 
+  ACALL LINE1         // Move cursor to first line 
+  MOV DPTR, #CHKMSG    // Set data pointer to message 
+  ACALL LCD_OUT      //Display message on LCD 
+  ACALL DELAY       //Introduce a delay 
+  ACALL CHECK_PASSWORD   //Check entered password (explained later) 
+  BACK: SJMP BACK         //Infinite loop (waiting for correct password) 
+ 
+LCD_INIT:   
+  MOV DPTR, #INIT_COMMANDS  //Set data pointer to initialization commands 
+  SETB SEL                    //Set data/instruction select for command 
+  ACALL LCD_OUT             //Send commands to LCD 
+  CLR SEL                   //Clear data/instruction select 
+  RET                                //Return from function 
+ 
+LCD_OUT:  
+  CLR A                      // Clear accumulator 
+  MOVC A, @A+DPTR            //Move data byte from data memory to accumulator 
+  JZ EXIT                    // If zero byte encountered, exit 
+  INC DPTR                    //Increment data pointer 
+  JB SEL, CMD                 // If data/instruction select bit is low, jump to command write 
+  ACALL DATAWRT              //Call function to write data byte 
+  SJMP LCD_OUT              //Jump back to LCD_OUT loop 
+ 
+ 
+ 
+ 
+CMD:   ACALL COMNWRT           // Call function to write command byte 
+ SJMP LCD_OUT             //Jump back to LCD_OUT loop 
+EXIT:  RET                        //Return from function 
+ 
+LINE2: 
+ MOV A, #0C0H                //Set command byte for second line 
+ ACALL COMNWRT             //Call function to write command byte 
+ RET                        //Return from function 
+ 
+LINE1: 
+MOV A, #80H                // Set command byte for first line 
+ACALL COMNWRT             // Call function to write command byte 
+RET                        //Return from function 
+ 
+CLRSCR: 
+  MOV A, #01H                //Set command byte for clear screen 
+  ACALL COMNWRT             // Call function to write command byte 
+  RET                        // Return from function 
+ 
+COMNWRT: 
+  MOV P2, A                  //Move command byte to port P2 
+  CLR P3.7                   //Clear row select for LCD 
+  CLR P3.6                   //Clear row write for LCD 
+  SETB P3.5                   //Enable LCD 
+  ACALL DELAY                //Introduce a short delay 
+  CLR P3.5                   // Disable LCD 
+  RET                        // Return from function 
+ 
+DELAY: MOV R7, #100    // Set counter for delay loop 
+ HER2: MOV R6, #255    // Set counter for inner loop 
+ HERE: DJNZ R6, HERE    //Decrement inner loop counter, loop until 0 
+DATAWRT: 
+  MOV P2, A                  // Move data byte to port P2 
+  SETB P3.7                   // Set row select for LCD (data mode) 
+  CLR P3.6                   // Clear row write for LCD 
+  SETB P3.5                   // Enable LCD 
+  ACALL DELAY                // Introduce a short delay 
+  CLR P3.5                   // Disable LCD 
+  RET                        //Return from function 
+ 
+READ_KEYPRESS:  
+  ACALL CLRSCR    // Clear LCD screen 
+  ACALL LINE1      // Move cursor to first line 
+  MOV DPTR, #IPMSG    // Set data pointer to "ENTER PASSWORD" message 
+  ACALL LCD_OUT    //Display message on LCD 
+  ACALL LINE2      //Move cursor to second line 
+ 
+ROTATE: 
+  ACALL KEY_SCAN    // Call function to scan keypad for pressed key 
+  MOV @R1, A         //Store scanned key code in memory pointed to by R1 
+  MOV A, #'*'        //Set accumulator with asterisk character 
+  ACALL DATAWRT    //Display '*' on LCD (might be visual feedback) 
+  ACALL DELAY     // Introduce a delay 
+  INC R1             //Increment pointer to next memory location for storing key 
+  DJNZ R0, ROTATE    //Decrement digit counter, loop until all digits entered 
+   RET                //Return from function 
+ 
+CHECK_PASSWORD: 
+  MOV R3, #5D        // Number of digits in password (5) 
+  MOV R0, #60H      // Data memory location for stored password (default) 
+  MOV R1, #70H       //Data memory location for entered password 
+ 
+ 
+ 
+RPT:  MOV A, @R0        //Move stored password digit to accumulator 
+       MOV B, @R1       // Move entered password digit to B register 
+       XRL A, B           // Perform XOR operation (check if digits match) 
+       JNZ FAIL          //If digits don't match, jump to FAIL 
+       INC R0             //Increment pointers to next digits 
+       INC R1 
+       DJNZ R3, RPT      // Decrement digit counter, loop until all digits checked 
+ 
+  ACALL CLRSCR      //Clear LCD screen 
+  ACALL LINE1        //Move cursor to first line 
+  MOV DPTR, #TEXT_S1   //Set data pointer to "ACCESS GRANTED" message 
+  ACALL LCD_OUT    // Display message on LCD 
+  ACALL LINE2        // Move cursor to second line 
+  ACALL DELAY      // Introduce a delay 
+  SJMP GOBACK       //Jump back to MAIN loop (if password is correct) 
+ 
+FAIL:  ACALL CLRSCR      // Clear LCD screen 
+  ACALL LINE1         // Move cursor to first line 
+  MOV DPTR, #TEXT_F1   //Set data pointer to "WRONG PASSWORD" message 
+  ACALL LCD_OUT     // Display message on LCD 
+  ACALL DELAY      //Introduce a delay 
+  ACALL LINE2        //Move cursor to second line 
+  MOV DPTR, #TEXT_F2   // Set data pointer to "ACCESS DENIED" message 
+  ACALL LCD_OUT     //Display message on LCD 
+  ACALL DELAY      //Introduce a delay 
+  DJNZ R2, GOMAIN    //Decrement number of attempts counter 
+  SJMP CHECK_SECURITY  //If attempts exhausted, jump to security check 
+ 
+GOBACK: RET          // Return from function (reached after successful password check) 
+GOMAIN: LJMP MAIN    //Long jump to MAIN loop (reached after failed attempt with attempts remaining) 
+ 
+CHECK_SECURITY:     // Check Security subroutine 
+    MOV R5,#6D           // Initialize counter for security key digits 
+    MOV R0,#50H         // Point R0 to the memory location for the entered security key 
+    ACALL CLRSCR        // Clear the LCD screen 
+    ACALL LINE1         // Move cursor to line 1 
+    MOV DPTR, #SECURITY_MSG     // Load address of SECURITY_MSG into DPTR 
+    ACALL LCD_OUT       // Output SECURITY_MSG to LCD 
+    ACALL LINE2          // Move cursor to line 2 
+     
+    ROTATE2:            // Loop to read and display entered security key 
+    ACALL KEY_SCAN      // Scan for keypress 
+    MOV @R0,A           // Store the pressed key at memory location pointed by R0 
+    MOV A,#'*'           // Load '*' character into accumulator 
+    ACALL DATAWRT       // Output '*' character to LCD 
+    ACALL DELAY         // Delay for stability 
+    INC R0               // Move to next memory location for next keypress 
+    DJNZ R5,ROTATE2     // Repeat until all digits are entered 
+    MOV R5,#6D          // Reset counter for security key digits 
+    MOV R0,#40H         // Point R0 to the memory location for stored security key 
+    MOV R1,#50H         // Point R1 to the memory location for entered security key comparison 
+    LOOP:                // Loop to compare entered security key with stored key 
+    MOV A,@R0           // Move character from stored security key to A 
+    MOV B,@R1           // Move character from entered security key to B 
+    XRL A,B              // XOR operation between stored and entered security keys 
+    JNZ FAIL1            // If result is not zero, jump to FAIL1 
+    INC R1               // Move to next character of entered security key 
+    INC R0               // Move to next character of stored security key 
+    DJNZ R5, LOOP       // Repeat until all digits are compared 
+    ACALL CLRSCR        // Clear the LCD screen 
+    ACALL LINE1         // Move cursor to line 1 
+    MOV DPTR, #TEXT_S2     // Load address of TEXT_S2 (success message) into DPTR 
+ 
+ 
+    ACALL LCD_OUT       // Output success message to LCD 
+    ACALL DELAY         // Delay for stability 
+    SJMP CORRECT_SECURITY    // Jump to CORRECT_SECURITY subroutine 
+ 
+FAIL1:                // If entered security key doesn't match stored key 
+    ACALL CLRSCR       // Clear the LCD screen 
+    ACALL LINE1        // Move cursor to line 1 
+    MOV DPTR, #TEXT_F3     // Load address of TEXT_F3 (failure message) into DPTR 
+    ACALL LCD_OUT      // Output failure message to LCD 
+    ACALL DELAY        // Delay for stability 
+    ACALL LINE2        // Move cursor to line 2 
+    MOV DPTR, #TEXT_F4     // Load address of TEXT_F4 (retry message) into DPTR 
+    ACALL LCD_OUT      // Output retry message to LCD 
+    ACALL DELAY        // Delay for stability 
+    SJMP CHECK_SECURITY    // Retry entering security key 
+ 
+CORRECT_SECURITY:       // If entered security key matches stored key 
+    ACALL CLRSCR          // Clear the LCD screen 
+    ACALL LINE1           // Move cursor to line 1 
+    MOV DPTR, #RESET_PASS_MSG     // Load address of RESET_PASS_MSG (reset password message) into DPTR 
+    ACALL LCD_OUT         // Output reset password message to LCD 
+    ACALL DELAY           // Delay for stability 
+    SJMP RESET            // Jump to RESET subroutine 
+   
+ 
+ 
+RESET:                  // Reset password subroutine 
+    MOV R3,#5D           // Initialize counter for password digits 
+    MOV R0,#20H          // Point R0 to the memory location for entering new password 
+    ACALL CLRSCR         // Clear the LCD screen 
+    ACALL LINE1          // Move cursor to line 1 
+    MOV DPTR, #ENTER_NEW_PIN_MSG   // Load address of ENTER_NEW_PIN_MSG into DPTR 
+    ACALL LCD_OUT        // Output ENTER_NEW_PIN_MSG to LCD 
+    ACALL LINE2          // Move cursor to line 2 
+    ROTATE3:             // Loop to read and display new password 
+    ACALL KEY_SCAN       // Scan for keypress 
+    MOV @R0,A            // Store the pressed key at memory location pointed by R0 
+    MOV A,#'*'           // Load '*' character into accumulator 
+    ACALL DATAWRT        // Output '*' character to LCD 
+    ACALL DELAY          // Delay for stability 
+    INC R0                // Move to next memory location for next keypress 
+    DJNZ R3,ROTATE3      // Repeat until all digits are entered 
+     
+RE_ENTER:               // Re-enter password subroutine 
+    MOV R3,#5D            // Initialize counter for password digits 
+    MOV R1,#30H           // Point R1 to the memory location for re-entering password 
+    ACALL CLRSCR          // Clear the LCD screen 
+    ACALL LINE1           // Move cursor to line 1 
+    MOV DPTR, #RE_ENTER_PASS     // Load address of RE_ENTER_PASS into DPTR 
+    ACALL LCD_OUT         // Output RE_ENTER_PASS to LCD 
+    ACALL LINE2           // Move cursor to line 2 
+    ROTATE4:              // Loop to read and display re-entered password 
+    ACALL KEY_SCAN        // Scan for keypress 
+    MOV @R1,A             // Store the pressed key at memory location pointed by R1 
+    MOV A,#'*'            // Load '*' character into accumulator 
+    ACALL DATAWRT       
+    ACALL DELAY        
+    INC R1                 // Move to next memory location for next keypress 
+    DJNZ R3,ROTATE4       // Repeat until all digits are entered 
+    ACALL CHECK_RESET_PASSWORD   // Check if re-entered password matches new password 
+    LJMP SWITCH           // Jump to SWITCH subroutine 
+ 
+CHECK_RESET_PASSWORD:      // Subroutine to check if re-entered password matches new password 
+ 
+ 
+    MOV R3,#5D               // Initialize counter for password digits 
+    MOV R0,#20H              // Point R0 to the memory location for new password 
+    MOV R1,#30H              // Point R1 to the memory location for re-entered password 
+     
+    RPT2: MOV A,@R0          // Move character from new password to A 
+    MOV B,@R1               // Move character from re-entered password to B 
+    XRL A,B                  // XOR operation between new and re-entered passwords 
+    JNZ FAIL2               // If result is not zero, jump to FAIL2 
+    INC R0                   // Move to next character of new password 
+    INC R1                   // Move to next character of re-entered password 
+    DJNZ R3,RPT2            // Repeat until all digits are compared 
+     
+    // If passwords match, display success message 
+    ACALL CLRSCR  
+    ACALL LINE1 
+    MOV DPTR,#TEXT_S3 
+    ACALL LCD_OUT 
+    ACALL DELAY 
+    SJMP GOBACK2 
+     
+// If passwords don't match, display failure message 
+FAIL2: ACALL CLRSCR     
+    ACALL LINE1 
+    MOV DPTR,#TEXT_F5 
+    ACALL LCD_OUT 
+    ACALL DELAY 
+    ACALL LINE2 
+    MOV DPTR,#TEXT_F4 
+    ACALL LCD_OUT 
+    ACALL DELAY 
+    SJMP RE_ENTER            // Retry entering new password 
+ 
+GOBACK2: RET         // Return from subroutine 
+   
+SWITCH:               // Switch characters subroutine 
+    MOV R3,#5D        // Initialize counter for password digits 
+    MOV R0,#30H      // Point R0 to the memory location for the first password digit 
+    MOV R1,#60H      // Point R1 to the memory location for the second password digit 
+    AGAIN: MOV A,@R0       // Move character from first password to A 
+    MOV @R1,A              // Move character from A to second password 
+    INC R0                  // Move to next character of first password 
+    INC R1                  // Move to next character of second password 
+    DJNZ R3,AGAIN          // Repeat until all digits are switched 
+    LJMP MAIN              // Jump to MAIN program 
+ 
+KEY_SCAN:             // Key scanning subroutine 
+    MOV P0,#0FFH      // Set P0 as input port 
+    K1: MOV P1,#0      // Ground all rows at once 
+    MOV A,P0           // Read all columns 
+    ANL A,#00001111B      // Mask unused bits 
+    CJNE A,#00001111B,K1     // Check if all keys are released 
+     
+    K2: ACALL DELAY        // Delay for key debounce 
+    MOV A,P0               // Check if any key is pressed 
+    ANL A,#00001111B       // Mask unused bits 
+    CJNE A,#00001111B,OVER     // If any key is pressed, wait 
+    SJMP K2               // If none, keep polling 
+     
+    OVER: ACALL DELAY       // Wait  
+    MOV A,P0                // Check for key closure 
+    ANL A,#00001111B        // Mask unused bits 
+    CJNE A,#00001111B,OVER1     // If any key is pressed, find row 
+    SJMP K2                 // If none, keep polling 
+ 
+ 
+    OVER1: MOV P1,#1110111B     // Ground row 0 
+    MOV A,P0               // Read all columns 
+    ANL A,#00001111B       // Mask unused bits 
+    CJNE A,#00001111B,ROW_0     // If row 0, find column 
+    MOV P1,#11111011B      // Ground row 1 
+    MOV A,P0               // Read all columns 
+    ANL A,#00001111B       // Mask unused bits 
+    CJNE A,#00001111B,ROW_1     // If row 1, find column 
+    MOV P1,#11111101B      // Ground row 2 
+    MOV A,P0               // Read all columns 
+    ANL A,#00001111B       // Mask unused bits 
+    CJNE A,#00001111B,ROW_2     // If row 2, find column 
+    MOV P1,#11110110B      // Ground row 3 
+    MOV A,P0               // Read all columns 
+    ANL A,#00001111B       // Mask unused bits 
+    CJNE A,#00001111B,ROW_3     // If row 3, find column 
+    LJMP K2                // If none, false input, repeat 
+ 
+    ROW_0: MOV DPTR, #KCODE0    // Set DPTR to start of row 0 
+    SJMP FIND             // Find column belongs to 
+     
+    ROW_1: MOV DPTR, #KCODE1    // Set DPTR to start of row 1 
+    SJMP FIND             // Find column belongs to 
+     
+    ROW_2: MOV DPTR, #KCODE2    // Set DPTR to start of row 2 
+    SJMP FIND             // Find column belongs to 
+     
+    ROW_3: MOV DPTR, #KCODE3   // Set DPTR to start of row 3 
+     
+    FIND: RRC A           // See if any CY bit low 
+    JNC MATCH            // If zero, get ASCII code 
+    INC DPTR             // Point to next column 
+    SJMP FIND            // Keep searching 
+         
+    MATCH: CLR A          // If match, get ASCII code 
+    MOVC A,@A+DPTR 
+    RET                   // Return from subroutine 
+ 
+ORG 800H 
+ 
+INIT_COMMANDS:  DB 38H,0EH,01H,06H,80H,0     // Initial LCD commands 
+TEXT1: DB "PASSWORD BASED",0       // First line of text 
+TEXT2: DB "SECURITY SYSTEM",0       // Second line of text 
+IPMSG: DB "ENTER PASSWORD",0       // Message prompt for entering password 
+CHKMSG: DB "CHECKING",0        // Message indicating password checking 
+TEXT_S1: DB "ACCESS - GRANTED",0       // Success message for access granted 
+TEXT_S2: DB "VALID KEY",0        // Success message for valid key entered 
+TEXT_S3: DB "PASSWORD MATCHED",0      // Success message for password matched 
+TEXT_F1: DB "WRONG PASSWORD",0       // Failure message for wrong password entered 
+TEXT_F2: DB "ACCESS DENIED",0       // Failure message for access denied 
+TEXT_F3: DB "Invalid PIN",0        // Failure message for invalid PIN 
+TEXT_F4: DB "Try again",0        // Prompt message for retrying 
+TEXT_F5: DB "NOT MATCHED",0       // Failure message for not matched passwords 
+RESET_PASS_MSG: DB "Reset Password",0      // Message for resetting password 
+SECURITY_MSG: DB "Enter Security",0       // Message for entering security key 
+ENTER_NEW_PIN_MSG:DB "NEW PASSWORD !",0     // Message prompt for entering new password 
+RE_ENTER_PASS:DB "RE ENTER",0                                                            // Message prompt for re-entering password 
+ 
+KCODE0: DB 'C','D','E','F'       // Keypad characters for row 0 
+KCODE1: DB 8,9,'A','B'        // Keypad characters for row 1 
+KCODE2: DB 4,5,6,7                                   // Keypad characters for row 2 
+KCODE3: DB 0,1,2,3        // Keypad characters for row 3 
+END 
